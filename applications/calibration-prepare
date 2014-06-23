@@ -1,0 +1,112 @@
+#!/bin/bash
+
+function usage()
+{
+    echo
+    echo "prepare sensor data for feature labeling and calibration"
+    echo
+    echo "usage: calibration-prepare <log base dir> [<sensor options>]"
+    echo "    <log base dir> : base directory of calibration log (contains nav.bin (--binary=t,6d --fields=t,x,y,z,roll,pitch,yaw) and sensor.bin (--binary=t,3d --fields=t,x,y,z))"
+    echo "    <sensor options> : sensor-specific options, e.g. offsets, etc"
+    echo
+    echo "<sensor options>"
+    echo "    --name=<sensor name> : e.g. sick-front (default is sensor) (note: maps to sick-front.bin or sensor.bin"
+    echo "    --offset=<sensor offset> : e.g. 0,0,-0.8845,0,0,$(math-deg2rad 180)"
+    echo "    --thin=<ratio> : e.g. 0.2, default is 1.0"
+    echo "    --features=<file> : file with a point cloud containing all the features,"
+    echo "                        e.g. labelled from a different sensor's data"
+    echo "                        examples: (note use of quotes)"
+    echo "                        --features \"sick.v.features.bin;binary=t,3d;fields=,x,y,z\""
+    echo "                        --features sick.v.features.bin"
+    echo "                        in the last example the format of the feature file is the same"
+    echo "                        as returned by this script"
+    echo "    --format : will return the format of the binary output of this script "
+    echo "examples"
+    echo "    calibration-prepare /data --offset=0,0,0,0,0,0"
+    echo "    calibration-prepare --format"
+    echo 
+    exit 1
+}
+
+LOG_DIR=$1
+RUN_DIR=$(pwd)
+OUTPUT="calibration"
+OFFSET=
+THIN=1.0
+FEATURES=
+MAXSTDDEV=0.05 #filter for 'bad' nav data
+MAXGAP=1.04 #nav must be spaced closer in seconds than this to be used
+FEATURE_FILTER_SIZE="0.5,0.5,4.0" #spatial filter size when using filter
+NAME="sensor"
+
+#get inputs
+for cmd_args in "$@" ; do
+    if [[ "$cmd_args" == '--help' || "${cmd_args}" == '-h' ]] ; then usage ; exit -1; fi
+    if [[ "$cmd_args" == '--format' ]] ; then echo 't,15d,ui' ; exit 0; fi
+    if [[ "$( echo $cmd_args | grep '\-\-offset=' )" != "" ]]; then OFFSET="${cmd_args#--offset=}"; fi
+    if [[ "$( echo $cmd_args | grep '\-\-name=' )" != "" ]]; then NAME="${cmd_args#--name=}"; fi
+    if [[ "$( echo $cmd_args | grep '\-\-thin=' )" != "" ]]; then THIN="${cmd_args#--thin=}"; fi
+    if [[ "$( echo $cmd_args | grep '\-\-features=' )" != "" ]]; then FEATURES="${cmd_args#--features=}"; fi
+done
+
+#set FEATURES to be the appropriate filename and format (either default or supplied)
+if [[ "$FEATURES" != "" ]] ; then
+    F=$FEATURES
+    echo "calibration-prepare: using features file $FEATURES"
+    if [[ "${FEATURES%.bin}" != "$FEATURES" ]] ; then F="$F;binary=t,12d,ui" ; fi
+    if [[ "${FEATURES%.bin}" != "$FEATURES" || "${FEATURES%.csv}" != "$FEATURES" ]] ; then F="$F;fields=,,,,x,y,z,,,,,,,id" ; fi
+    FEATURES=$F
+fi
+
+#use supplied or default offset plus nav
+if [[ "$OFFSET" != "" ]] ; then
+    OFFSET="$OFFSET + $LOG_DIR/nav.bin"
+    echo
+    echo "calibration-prepare: using given offset: $OFFSET"
+    echo
+else
+    echo "error: no initial offset supplied"
+    usage
+fi
+
+echo "view nav data - check the trajectory is smooth, indicating a good nav solution"
+cat $LOG_DIR/nav.bin | view-points --binary=t,6d --fields=t,x,y,z,,,
+
+echo $FEATURES
+if [ -n "$FEATURES" ] ; then
+    echo 'calibration-prepare: georeferencing, filtering and appending 0 column for labelling...'
+    FEATURE_FILTER="points-filter --stddev=$FEATURE_FILTER_SIZE --fields=,,,,x,y,z --matching --verbose --binary=t,12d $FEATURES"
+else
+    echo 'calibration-prepare: georeferencing and appending 0 column for labelling...'
+    FEATURE_FILTER="cat"
+fi
+
+cat $LOG_DIR/$NAME.bin \
+    | csv-thin $THIN --size=$(csv-size t,3d) \
+    | csv-shuffle --binary=t,3d --fields=t,x,y,z --output-fields=t,x,y,z,x,y,z \
+    | points-frame --max-gap=$MAXGAP --output-frame --from="$OFFSET" --binary=t,6d --fields=t,,,,x,y,z --discard \
+    | $FEATURE_FILTER \
+    | csv-paste "-;binary=t,12d" "value=0;binary=ui" \
+    > calibration.bin
+
+
+echo 'calibration-prepare: loading in label-points. Select calibration features, label them 1,2,3... use 0 for non features...'
+COMMAND="label-points \"calibration.bin;fields=t,,,,x,y,z,,,,,,,id;binary=t,12d,ui\" $FEATURES"
+echo $COMMAND
+label-points "calibration.bin;binary=t,12d,ui;fields=t,,,,x,y,z,,,,,,,id" $FEATURES
+
+echo "forming final file, with only feature data..."
+cat calibration.bin | csv-select --binary=t,12d,ui --fields=",,,,,,,,,,,,,id" "id;from=1" > $NAME.features.bin
+
+echo "creating ascii version for convenience..."
+cat $NAME.features.bin | csv-from-bin t,12d,ui --precision=10 > $NAME.features.csv
+
+echo "view final data to confirm it is appropriate for calibration"
+cat $NAME.features.bin | view-points --binary=t,12d,ui --fields=t,,,,x,y,z,,,,,,,id
+
+echo "calibration preparation is complete, now \"load $NAME.features.csv\" OR \"bin_load('$NAME.features.bin','t,d,d,d,d,d,d,d,d,d,d,d,d,ui')\"in matlab for calibration calibrate"
+
+#to edit afterwards:
+#label-points "features.bin;fields=t,,,,x,y,z,,,,,,,id;binary=t,12d,ui" $FEATURES
+#cat features.bin | csv-from-bin t,12d,ui --precision=10 | grep -v --regexp=",0$" > features.csv
+#cat features.csv | csv-to-bin t,12d,ui > features.bin
