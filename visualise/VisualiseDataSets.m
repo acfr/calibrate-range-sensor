@@ -21,11 +21,11 @@
 % when visualising how well the sensors are calibrated together.
 %
 %   See also OPTIMISESENSORPOSES, MULTISENSORMULTIREGIONCOST, PLOT3
-function VisualiseDataSets(SensorToNavPoses, DataSets)
+function VisualiseDataSets(sensorToNavPoses, dataSets)
 
 cols = { 'b.', 'g.', 'r.', 'c.', 'm.', 'y.', 'k.' };
 
-for F = 1:size(DataSets,1),
+for F = 1:size(dataSets,1),
     figure;
     clf
     hold on
@@ -33,9 +33,9 @@ for F = 1:size(DataSets,1),
     xlabel('Northing')
     ylabel('Easting')
     zlabel('Down');
-    if size(DataSets,2) > 1
-        for S = 1:size(DataSets,2),
-            pointsNED = feval(DataSets(F,S).georegister, DataSets(F,S), SensorToNavPoses(S,:));
+    if size(dataSets,2) > 1
+        for S = 1:size(dataSets,2),
+            pointsNED = feval(dataSets(F,S).georegister, dataSets(F,S), sensorToNavPoses(S,:));
             if ( size(pointsNED,1) > 0 )
                 pointsNED = RemoveMean(pointsNED);
                 % pointsNED = RemovePointOutliers2(pointsNED,3);
@@ -43,7 +43,7 @@ for F = 1:size(DataSets,1),
             end
         end
     else
-        pointsNED = feval(DataSets(F,1).georegister, DataSets(F,1), SensorToNavPoses(1,:));
+        pointsNED = feval(dataSets(F,1).georegister, dataSets(F,1), sensorToNavPoses(1,:));
         if ( size(pointsNED,1) > 0 )
             pointsNED = RemoveMean(pointsNED);
             % pointsNED = RemovePointOutliers2(pointsNED,3);
