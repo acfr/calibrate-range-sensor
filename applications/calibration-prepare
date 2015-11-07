@@ -35,7 +35,7 @@ OFFSET=
 THIN=1.0
 FEATURES=
 MAXSTDDEV=0.05 #filter for 'bad' nav data
-MAXGAP=1.04 #nav must be spaced closer in seconds than this to be used
+MAXGAP=1.0 #nav must be spaced closer in seconds than this to be used
 FEATURE_FILTER_SIZE="0.5,0.5,4.0" #spatial filter size when using filter
 NAME="sensor"
 
@@ -104,7 +104,10 @@ cat $NAME.features.bin | csv-from-bin t,12d,ui --precision=10 > $NAME.features.c
 echo "view final data to confirm it is appropriate for calibration"
 cat $NAME.features.bin | view-points --binary=t,12d,ui --fields=t,,,,x,y,z,,,,,,,id
 
+echo -e "fields=t,xs,ys,zs,xn,yn,zn,north,east,down,roll,pitch,yaw,feature\nbinary=t,12d,ui" | name-value-convert --to json > $NAME.features.json
+
 echo "calibration preparation is complete, now \"load $NAME.features.csv\" OR \"bin_load('$NAME.features.bin','t,d,d,d,d,d,d,d,d,d,d,d,d,ui')\"in matlab for calibration calibrate"
+
 
 #to edit afterwards:
 #label-points "features.bin;fields=t,,,,x,y,z,,,,,,,id;binary=t,12d,ui" $FEATURES
