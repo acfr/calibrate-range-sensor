@@ -1,26 +1,26 @@
-function totalCost = MultiSensorMultiRegionCost( SensorToNavPose, DataSets, CostFunctions )
+function totalCost = MultiSensorMultiRegionCost( sensorToNavPose, dataSets, costFunctions )
 
-numSensors = size(SensorToNavPose,1);
-numFeatures = size(DataSets,1);
+numSensors = size(sensorToNavPose,1);
+numFeatures = size(dataSets,1);
 
 totalCost = 0;
 
 % Iterate each feature
-for F = 1:numFeatures
+for f = 1:numFeatures
     % Initialise points for this feature to empty matrix
     pointsNED = zeros(0,3);
     % Iterate each sensor
-    for S = 1:numSensors
+    for s = 1:numSensors
         % Calculate cartesian points (N,E,D) for this sensor's view of the
         % feature
-        if( numel(DataSets(F,S).RangeData) > 0 )
+        if( numel(dataSets(f,s).sensor) > 0 )
             pointsNED = [ pointsNED
-                          feval(DataSets(F,S).GeoregisterFunction, DataSets(F,S), SensorToNavPose(S,:) ) ];
+                          feval(dataSets(f,s).georegister, dataSets(f,s), sensorToNavPose(s,:) ) ];
         end
     end % S over DataSets(F,:)
     if( size(pointsNED,1) > 0)
         % Feed NED points into cost function
-        totalCost = totalCost + feval(CostFunctions{F}, pointsNED);
+        totalCost = totalCost + feval(costFunctions{f}, pointsNED);
     end
 end % F over DataSets
 totalCost = totalCost / numFeatures;

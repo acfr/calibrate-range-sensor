@@ -24,7 +24,6 @@
 function VisualiseDataSets(SensorToNavPoses, DataSets)
 
 cols = { 'b.', 'g.', 'r.', 'c.', 'm.', 'y.', 'k.' };
-marulanOffset = [ 6167957.077,  229940.441,  -642 ];
 
 for F = 1:size(DataSets,1),
     figure;
@@ -36,7 +35,7 @@ for F = 1:size(DataSets,1),
     zlabel('Down');
     if size(DataSets,2) > 1
         for S = 1:size(DataSets,2),
-            pointsNED = feval(DataSets(F,S).GeoregisterFunction, DataSets(F,S), SensorToNavPoses(S,:));
+            pointsNED = feval(DataSets(F,S).georegister, DataSets(F,S), SensorToNavPoses(S,:));
             if ( size(pointsNED,1) > 0 )
                 pointsNED = RemoveMean(pointsNED);
                 % pointsNED = RemovePointOutliers2(pointsNED,3);
@@ -44,7 +43,7 @@ for F = 1:size(DataSets,1),
             end
         end
     else
-        pointsNED = feval(DataSets(F,1).GeoregisterFunction, DataSets(F,1), SensorToNavPoses(1,:));
+        pointsNED = feval(DataSets(F,1).georegister, DataSets(F,1), SensorToNavPoses(1,:));
         if ( size(pointsNED,1) > 0 )
             pointsNED = RemoveMean(pointsNED);
             % pointsNED = RemovePointOutliers2(pointsNED,3);

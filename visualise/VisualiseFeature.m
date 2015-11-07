@@ -1,6 +1,6 @@
-function VisualiseFeature(F, S, DataSets, cal)
+function VisualiseFeature(f, s, dataSets, cal)
 
-pts = feval(DataSets(F,S).GeoregisterFunction, DataSets(F,S), cal);
+pts = feval(dataSets(f,s).georegister, dataSets(f,s), cal);
 ptsMean = RemoveMean(pts);
 ptsOutliers = RemovePointOutliers2(pts,3);
 

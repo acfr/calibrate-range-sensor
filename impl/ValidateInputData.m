@@ -4,7 +4,7 @@ function ValidateInputData( SensorToNavPose, DataSets, CostFunctions, bounds )
 numSensors = size(SensorToNavPose,1);
 if( size(SensorToNavPose,2) ~= 6 || numSensors < 1 )
     error('RangeSensorCalibrationToolbox:InvalidTransformInput', ...
-          'The SensorTransformsXYZYPR matrix must be an NS-by-6 matrix, with NS > 0');
+          'The SensorTransformsXYZRPY matrix must be an NS-by-6 matrix, with NS > 0');
 end
 
 % DataSets
@@ -21,35 +21,23 @@ end
 
 if( size(DataSets,2) ~= numSensors )
     error('RangeSensorCalibrationToolbox:DataSizeMismatch', ...
-          'The number of sensors does not match between inputs DATA and SensorTransformsXYZYPR. The number of columns in DATA should be equal to the number of rows in SensorTransformsXYZYPR.');
+          'The number of sensors does not match between inputs DATA and SensorTransformsXYZRPY. The number of columns in DATA should be equal to the number of rows in SensorTransformsXYZRPY.');
 end
 
-if( ~isfield(DataSets, 'RangeData') || ~isfield(DataSets, 'NavData') )
+if( ~isfield(DataSets, 'sensor') || ~isfield(DataSets, 'nav') )
     error('RangeSensorCalibrationToolbox:InvalidDataFormat', ...
-          'DATA must be a struct array with the following fields: RangeData, NavData.');
+          'DATA must be a struct array with the following fields: sensor, nav.');
 end
 
 for S = 1:numSensors
     for F = 1:numFeatures
         % Check each element of DATA has correctly formatted fields
-        [rM, rN] = size(DataSets(F,S).RangeData);
-        [nM, nN] = size(DataSets(F,S).NavData);
+        [rM, rN] = size(DataSets(F,S).sensor);
+        [nM, nN] = size(DataSets(F,S).nav);
         if( rM ~= nM ),
             error('RangeSensorCalibrationToolbox:InvalidDataFormat', ...
-                  'RangeData and NavData in the DATA structs must have the same number of rows.');
+                  'sensor and nav in the DATA structs must have the same number of rows.');
         end
-        % The following should be checked by the georegistration function
-        % the actually uses the data (typically GetNEDPoints or
-        % GetXYZPoints_XYZq_RAE)
-%         % Number of columns only matters if rows is nonzero --- this
-%         if( nM ~= 0 ) 
-%             if ( rN~=2 || nN~=6 ) && ( rN~=3 || nN~=7 )
-%                 error('RangeSensorCalibrationToolbox:InvalidDataFormat', ...
-%                       'RangeData must be in the format [range bearing] or [range azimuth elevation]', ...
-%                       'NavData must be in the format [north east down roll pitch yaw] or [x y z q1 q2 q3 q4]', ...
-%                       '(where [q1 q2 q3 q4] is an orientation quaternion).');
-%             end
-%         end
     end
 end
 

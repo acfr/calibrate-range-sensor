@@ -1,14 +1,13 @@
-function [X] = RemovePointOutliers2(Xin,outlierStDev)
+function [y] = RemovePointOutliers2(x,outlierStDev)
+y=RemoveMean(x);
 
-X=RemoveMean(Xin);
+N = size(x,1);
 
-N = size(Xin,1);
+[eigvec,eigval] = eig(cov(y));
 
-[eigvec,eigval] = eig(cov(X));
-
-rSq = X*inv(eigvec');
+rSq = y*inv(eigvec');
 rSq = rSq*inv(sqrt(eigval));
 rSq = dot(rSq,rSq,2);
 
 idx = find(rSq < outlierStDev^2);
-X = Xin(idx,:);
+y = x(idx,:);

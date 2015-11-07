@@ -1,14 +1,14 @@
-function [pointInBFrameXYZ] = CoordinateTransform( pointInAFrameXYZ, frameBtoAOffsetXYZYPR )
+function [pointInBFrameXYZ] = CoordinateTransform( pointInAFrameXYZ, frameBtoAOffsetXYZRPY )
 
-xab=frameBtoAOffsetXYZYPR(:,1);
-yab=frameBtoAOffsetXYZYPR(:,2);
-zab=frameBtoAOffsetXYZYPR(:,3);
-sinrollab=sin(frameBtoAOffsetXYZYPR(:,6));
-cosrollab=cos(frameBtoAOffsetXYZYPR(:,6));
-sinpitchab=sin(frameBtoAOffsetXYZYPR(:,5));
-cospitchab=cos(frameBtoAOffsetXYZYPR(:,5));
-sinyawab=sin(frameBtoAOffsetXYZYPR(:,4));
-cosyawab=cos(frameBtoAOffsetXYZYPR(:,4));
+xab=frameBtoAOffsetXYZRPY(:,1);
+yab=frameBtoAOffsetXYZRPY(:,2);
+zab=frameBtoAOffsetXYZRPY(:,3);
+sinrollab=sin(frameBtoAOffsetXYZRPY(:,4));
+cosrollab=cos(frameBtoAOffsetXYZRPY(:,4));
+sinpitchab=sin(frameBtoAOffsetXYZRPY(:,5));
+cospitchab=cos(frameBtoAOffsetXYZRPY(:,5));
+sinyawab=sin(frameBtoAOffsetXYZRPY(:,6));
+cosyawab=cos(frameBtoAOffsetXYZRPY(:,6));
 xa=pointInAFrameXYZ(:,1);
 ya=pointInAFrameXYZ(:,2);
 za=pointInAFrameXYZ(:,3);

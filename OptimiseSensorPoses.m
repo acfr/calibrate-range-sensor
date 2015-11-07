@@ -102,7 +102,7 @@
 %   GeometricCostOfVerticalLine, GEOMETRICCOSTOFHORIZONTALPLANE,
 %   GetNEDPoints, RBSensorMeanNED, MultiSensorMultiRegionCost.
 
-function [ SensorTransformsXYZYPR, FVAL,EXITFLAG,OUTPUT,LAMBDA,GRAD,HESSIAN ] = OptimiseSensorPoses( SensorTransformsXYZYPR0, DataSets, CostFunctions, bounds, options )
+function [ SensorTransformsXYZYPR, FVAL,EXITFLAG,OUTPUT,LAMBDA,GRAD,HESSIAN ] = OptimiseSensorPoses( sensorTransformsXYZRPY0, dataSets, costFunctions, bounds, options )
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Defaults where not specified
@@ -112,11 +112,11 @@ options = optimset( 'Algorithm','active-set','MaxFunEvals', 2000, 'MaxIter', 100
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Input validation
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
-ValidateInputData( SensorTransformsXYZYPR0, DataSets, CostFunctions, bounds );
+ValidateInputData( sensorTransformsXYZRPY0, dataSets, costFunctions, bounds );
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Optimisation
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 [SensorTransformsXYZYPR,FVAL,EXITFLAG,OUTPUT,LAMBDA,GRAD,HESSIAN] = fmincon( ...
-        @(SensorTransformsXYZYPR)MultiSensorMultiRegionCost(SensorTransformsXYZYPR, DataSets, CostFunctions), ...
-        SensorTransformsXYZYPR0, [], [], [], [], SensorTransformsXYZYPR0-bounds, SensorTransformsXYZYPR0+bounds, [], options);
+        @(SensorTransformsXYZYPR)MultiSensorMultiRegionCost(SensorTransformsXYZYPR, dataSets, costFunctions), ...
+        sensorTransformsXYZRPY0, [], [], [], [], sensorTransformsXYZRPY0-bounds, sensorTransformsXYZRPY0+bounds, [], options);

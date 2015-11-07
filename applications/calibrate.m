@@ -2,7 +2,7 @@
 if exist('bin_load')~=2
     error('Could not find required dependency: comma/csv/examples/bin_load.m - check your path settings')
 end
-reload=0;
+reload=1;
 dataFolder='X:/vegibot-data/processed/sardi/calibration/sick';
 
 featureFiles=dir([dataFolder,'/*features.bin']);
@@ -37,13 +37,10 @@ pitch=12;
 yaw=13;
 feature=14;
 
-%offsets with XYZYPR (note YAW-PITCH-ROLL)
-sensorTransformsXYZYPR0=zeros(nSensors,6);
-% todo: get rid of the rpy->ypr shuffle in this entire codebase. Use
-% xyz,roll,pitch,yaw everywhere instead
+sensorTransformsXYZRPY0=zeros(nSensors,6);
 for i=1:nSensors
-    system( sprintf('cat %s | name-value-get offset/initial | csv-shuffle --fields=x,y,z,roll,pitch,yaw --output-fields=x,y,z,yaw,pitch,roll > tmp.offset.csv',[dataFolder,'/',featureFiles(i).name(1:end-3),'json']) );
-    sensorTransformsXYZYPR0(i,:)=load('tmp.offset.csv');
+    system( sprintf('cat %s | name-value-get offset/initial > tmp.offset.csv',[dataFolder,'/',featureFiles(i).name(1:end-3),'json']) );
+    sensorTransformsXYZRPY0(i,:)=load('tmp.offset.csv');
     delete tmp.offset.csv
 end
 
@@ -58,9 +55,9 @@ end
 for( f=1:nFeatures )
     for( s=1:nSensors )
         fId = find(rawSensorData{s}(:,feature)==f); %f are indices to all points in feature i
-        data(f,s).RangeData = [rawSensorData{s}(fId,xs),rawSensorData{s}(fId,ys),rawSensorData{s}(fId,zs)]; %fill out the X,Y,Z sensor data for feature i
-        data(f,s).NavData = [rawSensorData{s}(fId,north),rawSensorData{s}(fId,east),rawSensorData{s}(fId,down),rawSensorData{s}(fId,roll),rawSensorData{s}(fId,pitch),rawSensorData{s}(fId,yaw)];
-        data(f,s).GeoregisterFunction = @GetNEDPointsXYZ;
+        data(f,s).sensor = [rawSensorData{s}(fId,xs),rawSensorData{s}(fId,ys),rawSensorData{s}(fId,zs)]; %fill out the X,Y,Z sensor data for feature i
+        data(f,s).nav = [rawSensorData{s}(fId,north),rawSensorData{s}(fId,east),rawSensorData{s}(fId,down),rawSensorData{s}(fId,roll),rawSensorData{s}(fId,pitch),rawSensorData{s}(fId,yaw)];
+        data(f,s).georegister = @SensorXYZtoWorldNED;
     end
 end
 
@@ -85,9 +82,9 @@ options = optimset( 'Algorithm','active-set','MaxFunEvals', 2000, 'MaxIter', 100
 
 disp('optimising...')
 tic
-[ sensorTransformsXYZYPR ] = OptimiseSensorPoses( sensorTransformsXYZYPR0, data, costfunctions, bounds, options )
+[ sensorTransformsXYZRPY ] = OptimiseSensorPoses( sensorTransformsXYZRPY0, data, costfunctions, bounds, options )
 toc
 
-[p0,p1] = VisualiseResults( sensorTransformsXYZYPR0, sensorTransformsXYZYPR, data, costfunctions );
-VisualiseDataSets( sensorTransformsXYZYPR0, data );
-VisualiseDataSets( sensorTransformsXYZYPR, data );
+[p0,p1] = VisualiseResults( sensorTransformsXYZRPY0, sensorTransformsXYZRPY, data, costfunctions );
+VisualiseDataSets( sensorTransformsXYZRPY0, data );
+VisualiseDataSets( sensorTransformsXYZRPY, data );
