@@ -1,40 +1,60 @@
-RELOAD=0;
-VISUALISE=1;
-DATA_DIR='C:\Users\j.underwood\Data\mars\CalibrationArkFiles\process\';
+%check dependencies
+if exist('bin_load')~=2
+    error('Could not find required dependency: comma/csv/examples/bin_load.m - check your path settings')
+end
+reload=0;
+dataFolder='X:/vegibot-data/processed/sardi/calibration/sick';
 
-nSensors=1;
-if( RELOAD )
-    rawSensorData=cell(1,1);
-    rawSensorData{1}=load([DATA_DIR,'features.csv']);
+featureFiles=dir([dataFolder,'/*features.bin']);
+nSensors=length(featureFiles);
+if nSensors==0
+    error(['No feature files found: ', dataFolder,'/*features.bin'])
+end
+if( reload )
+    rawSensorData=cell(1,nSensors);
+    for i=1:nSensors
+        %rawSensorData{i}=load(featureFiles(2).name); % csv
+        rawSensorData{i}=bin_load([dataFolder,'/',featureFiles(i).name],'t,d,d,d,d,d,d,d,d,d,d,d,d,ui');
+    end
 end
 
-%fields=['t','xs','ys','zs','scan-id','x','y','z','xn','yn','zn','roll','pitch','yaw','id']
+%todo: parse from json file using something like:
+%fieldname='cc';
+%if(length(strfind(fieldstring,fieldname))==1)
+%   fieldnum=length(strfind(fieldstring(1:strfind(fieldstring,fieldname)),','))+1
+%end
 xs=2;
 ys=3;
 zs=4;
-xn=6;
-yn=7;
-zn=8;
-north=9;
-east=10;
-down=11;
-roll=12;
-pitch=13;
-yaw=14;
-feature=15;
+xn=5;
+yn=6;
+zn=7;
+north=8;
+east=9;
+down=10;
+roll=11;
+pitch=12;
+yaw=13;
+feature=14;
 
 %offsets with XYZYPR (note YAW-PITCH-ROLL)
-sensorTransformsXYZYPR0=[0.3,0,-0.25,1.57,0,1.2915];
-bounds = [0.2, 0.2, 0.2, deg2rad(5), deg2rad(5), deg2rad(5) ];
+sensorTransformsXYZYPR0=zeros(nSensors,6);
+% todo: get rid of the rpy->ypr shuffle in this entire codebase. Use
+% xyz,roll,pitch,yaw everywhere instead
+for i=1:nSensors
+    system( sprintf('cat %s | name-value-get offset/initial | csv-shuffle --fields=x,y,z,roll,pitch,yaw --output-fields=x,y,z,yaw,pitch,roll > tmp.offset.csv',[dataFolder,'/',featureFiles(i).name(1:end-3),'json']) );
+    sensorTransformsXYZYPR0(i,:)=load('tmp.offset.csv');
+    delete tmp.offset.csv
+end
 
-sensorTransformsXYZYPRLower = sensorTransformsXYZYPR0 - bounds;
-sensorTransformsXYZYPRUpper = sensorTransformsXYZYPR0 + bounds;
+%todo: get from json file instead
+bounds = [0.2, 0.2, 0.2, deg2rad(5), deg2rad(5), deg2rad(5) ];
+bounds = repmat(bounds,nSensors,1);
 
 nFeatures=0;
 for s=1:nSensors
     nFeatures = max( nFeatures, max(rawSensorData{s}(:,feature)) );%largest feature id of all sensors. Id 0 is rubish non-feature.
 end
-
 for( f=1:nFeatures )
     for( s=1:nSensors )
         fId = find(rawSensorData{s}(:,feature)==f); %f are indices to all points in feature i
@@ -44,19 +64,28 @@ for( f=1:nFeatures )
     end
 end
 
-%THIS PART IS STILL MANUALLY ENTERED - YUK!
-%TODO Auto calc based on min cost
+
+%todo: specify feature shapes from json file?
+%todo: auto calc based on min cost?
+
+%the following bindings add constrained functions or allow ignoring a feature
+%GeometricCostOfVerticalLine = @(x)(GeometricCostOfConstrainedLine([0,0,1],x));
+Ignore=@(x)(0);
+
 costfunctions = cell(nFeatures,1);
 costfunctions{1} = 'GeometricCostOfUnconstrainedLine';
 costfunctions{2} = 'GeometricCostOfUnconstrainedLine';
 costfunctions{3} = 'GeometricCostOfUnconstrainedPlane';
 costfunctions{4} = 'GeometricCostOfUnconstrainedPlane';
+costfunctions{5} = 'GeometricCostOfUnconstrainedPlane';
+costfunctions{6} = 'GeometricCostOfUnconstrainedPlane';
+costfunctions{7} = Ignore;
 
 options = optimset( 'Algorithm','active-set','MaxFunEvals', 2000, 'MaxIter', 1000, 'Display','iter', 'TolFun', 1e-10, 'TolX', 1e-10);
 
 disp('optimising...')
 tic
-[ sensorTransformsXYZYPR ] = OptimiseSensorPoses( sensorTransformsXYZYPR0, data, costfunctions, sensorTransformsXYZYPRLower, sensorTransformsXYZYPRUpper, options )
+[ sensorTransformsXYZYPR ] = OptimiseSensorPoses( sensorTransformsXYZYPR0, data, costfunctions, bounds, options )
 toc
 
 [p0,p1] = VisualiseResults( sensorTransformsXYZYPR0, sensorTransformsXYZYPR, data, costfunctions );
