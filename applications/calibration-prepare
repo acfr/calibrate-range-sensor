@@ -60,7 +60,7 @@ fi
 
 #use supplied or default offset plus nav
 if [[ "$OFFSET" != "" ]] ; then
-    OFFSET="$OFFSET + $LOG_DIR/nav.bin"
+    OFFSET_STRING="$OFFSET + $LOG_DIR/nav.bin"
     echo
     echo "calibration-prepare: using given offset: $OFFSET"
     echo
@@ -84,7 +84,7 @@ fi
 cat $LOG_DIR/$NAME.bin \
     | csv-thin $THIN --size=$(csv-size t,3d) \
     | csv-shuffle --binary=t,3d --fields=t,x,y,z --output-fields=t,x,y,z,x,y,z \
-    | points-frame --max-gap=$MAXGAP --output-frame --from="$OFFSET" --binary=t,6d --fields=t,,,,x,y,z --discard \
+    | points-frame --max-gap=$MAXGAP --output-frame --from="$OFFSET_STRING" --binary=t,6d --fields=t,,,,x,y,z --discard \
     | $FEATURE_FILTER \
     | csv-paste "-;binary=t,12d" "value=0;binary=ui" \
     > calibration.bin
@@ -104,7 +104,7 @@ cat $NAME.features.bin | csv-from-bin t,12d,ui --precision=10 > $NAME.features.c
 echo "view final data to confirm it is appropriate for calibration"
 cat $NAME.features.bin | view-points --binary=t,12d,ui --fields=t,,,,x,y,z,,,,,,,id
 
-echo -e "fields=t,xs,ys,zs,xn,yn,zn,north,east,down,roll,pitch,yaw,feature\nbinary=t,12d,ui" | name-value-convert --to json > $NAME.features.json
+echo -e "fields=t,xs,ys,zs,xn,yn,zn,north,east,down,roll,pitch,yaw,feature\nbinary=t,12d,ui\noffset/initial=$OFFSET" | name-value-convert --to json > $NAME.features.json
 
 echo "calibration preparation is complete, now \"load $NAME.features.csv\" OR \"bin_load('$NAME.features.bin','t,d,d,d,d,d,d,d,d,d,d,d,d,ui')\"in matlab for calibration calibrate"
 
