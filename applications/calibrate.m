@@ -3,7 +3,7 @@ if exist('bin_load')~=2
     error('Could not find required dependency: comma/csv/examples/bin_load.m - check your path settings')
 end
 reload=1;
-dataFolder='X:/vegibot-data/processed/sardi/calibration/sick';
+dataFolder='x:/mantis-shrimp/processed/acfr/2015-11-18-grass/lidar-calibration0/'
 
 featureFiles=dir([dataFolder,'/*features.bin']);
 nSensors=length(featureFiles);
@@ -76,14 +76,17 @@ costfunctions{3} = 'GeometricCostOfUnconstrainedPlane';
 costfunctions{4} = 'GeometricCostOfUnconstrainedPlane';
 costfunctions{5} = 'GeometricCostOfUnconstrainedPlane';
 costfunctions{6} = 'GeometricCostOfUnconstrainedPlane';
-costfunctions{7} = Ignore;
+costfunctions{7} = 'GeometricCostOfUnconstrainedPlane';
+%costfunctions{7} = Ignore;
 
 options = optimset( 'Algorithm','active-set','MaxFunEvals', 2000, 'MaxIter', 1000, 'Display','iter', 'TolFun', 1e-10, 'TolX', 1e-10);
 
 disp('optimising...')
 tic
-[ sensorTransformsXYZRPY ] = OptimiseSensorPoses( sensorTransformsXYZRPY0, data, costfunctions, bounds, options )
+[ sensorTransformsXYZRPY ] = OptimiseSensorPoses( sensorTransformsXYZRPY0, data, costfunctions, bounds, options );
 toc
+
+fprintf('optimised result:\noffset=%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n',sensorTransformsXYZRPY)
 
 [p0,p1] = VisualiseResults( sensorTransformsXYZRPY0, sensorTransformsXYZRPY, data, costfunctions );
 VisualiseDataSets( sensorTransformsXYZRPY0, data );
