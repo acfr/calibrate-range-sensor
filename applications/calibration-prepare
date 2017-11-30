@@ -24,14 +24,11 @@ function usage()
     echo "<sensor options>"
     echo "    --name=<sensor name> : e.g. sick-front (default is sensor) (note: maps to sick-front.bin or sensor.bin"
     echo "    --offset=<sensor offset> : e.g. 0,0,-0.8845,0,0,$(math-deg2rad 180)"
-    echo "    --thin=<ratio> : e.g. 0.2, default is 1.0"
-    echo "    --features=<file> : file with a point cloud containing all the features,"
+    echo "    --thin=<resolution> : e.g. 0.2 will keep only one point per 0.2m voxel default is no thinning"
+    echo "    --features=<file> : file with a point cloud containing pre labelled features,"
     echo "                        e.g. labelled from a different sensor's data"
-    echo "                        examples: (note use of quotes)"
-    echo "                        --features \"sick.v.features.bin;binary=t,3d;fields=,x,y,z\""
     echo "                        --features sick.v.features.bin"
-    echo "                        in the last example the format of the feature file is the same"
-    echo "                        as returned by this script"
+    echo "                        expecting binary format same as output by this script"
     echo "    --format : will return the format of the binary output of this script "
     echo "examples"
     echo "    $name /data --offset=0,0,0,0,0,0"
@@ -43,11 +40,10 @@ LOG_DIR=$1
 RUN_DIR=$(pwd)
 OUTPUT="calibration"
 OFFSET=
-THIN=1.0
-FEATURES=
+THIN=
 MAXSTDDEV=0.05 #filter for 'bad' nav data
 MAXGAP=0.04 #nav must be spaced closer in seconds than this to be used
-FEATURE_FILTER_SIZE="0.5,0.5,4.0" #spatial filter size when using filter
+FEATURE_FILTER_SIZE=0.5 #spatial filter size when using filter
 NAME="sensor"
 
 #get inputs
@@ -59,15 +55,6 @@ for cmd_args in "$@" ; do
     if [[ "$( echo $cmd_args | grep '\-\-thin=' )" != "" ]]; then THIN="${cmd_args#--thin=}"; fi
     if [[ "$( echo $cmd_args | grep '\-\-features=' )" != "" ]]; then FEATURES="${cmd_args#--features=}"; fi
 done
-
-#set FEATURES to be the appropriate filename and format (either default or supplied)
-if [[ "$FEATURES" != "" ]] ; then
-    F=$FEATURES
-    errcho "using features file $FEATURES"
-    if [[ "${FEATURES%.bin}" != "$FEATURES" ]] ; then F="$F;binary=t,12d,ui" ; fi
-    if [[ "${FEATURES%.bin}" != "$FEATURES" || "${FEATURES%.csv}" != "$FEATURES" ]] ; then F="$F;fields=,,,,x,y,z,,,,,,,id" ; fi
-    FEATURES=$F
-fi
 
 #use supplied or default offset plus nav
 if [[ "$OFFSET" != "" ]] ; then
@@ -82,38 +69,56 @@ fi
 
 [[ -s $LOG_DIR/nav.bin ]] || error "could not find trajectory file: $LOG_DIR/nav.bin"
 [[ -s $LOG_DIR/$NAME.bin ]] || error "could not find sensor file: $LOG_DIR/$NAME.bin"
+if [[ $FEATURES ]] ; then
+    [[ -s $FEATURES ]] || error "could not find feature file: $FEATURES"
+fi
 
 errcho "view nav data - check the trajectory is smooth, indicating a good nav solution"
 cat $LOG_DIR/nav.bin | view-points --binary=t,6d --fields=t,x,y,z,,,
 
-errcho $FEATURES
-if [ -n "$FEATURES" ] ; then
-    errcho 'georeferencing, filtering and appending 0 column for labelling...'
-    FEATURE_FILTER="points-filter --stddev=$FEATURE_FILTER_SIZE --fields=,,,,x,y,z --matching --verbose --binary=t,12d $FEATURES"
-else
-    errcho 'georeferencing and appending 0 column for labelling...'
-    FEATURE_FILTER="cat"
-fi
+function filter
+{
+    if [ -n "$FEATURES" ] ; then
+        points-join --all --verbose --binary=t,12d --fields=,,,,x,y,z --radius=$FEATURE_FILTER_SIZE "$FEATURES;binary=t,12d,ui;fields=,,,,x,y,z" \
+            | csv-shuffle --binary=t,12d,t,12d,ui --fields=t,xs,ys,zs,xn,yn,zn,north,east,down,roll,pitch,yaw,,,,,,,,,,,,,,id --output-fields=t,xs,ys,zs,xn,yn,zn,north,east,down,roll,pitch,yaw,id
+    else
+        csv-paste "-;binary=t,12d" "value=0;binary=ui"
+    fi
+}
 
+function thin
+{
+    if [ -n "$THIN" ] ; then
+        #points-calc thin --points-per-voxel=1 --resolution=$THIN --binary=t,12d --fields=,,,,x,y,z
+        points-calc thin --rate=$THIN --resolution=0.5 --binary=t,12d --fields=,,,,x,y,z
+    else
+        cat
+    fi
+}
+
+errcho 'georeferencing (filtering if specified) and appending 0 column for labelling...'
 pv $LOG_DIR/$NAME.bin \
-    | csv-thin $THIN --size=$(csv-size t,3d) \
     | csv-shuffle --binary=t,3d --fields=t,x,y,z --output-fields=t,x,y,z,x,y,z \
     | points-frame --max-gap=$MAXGAP --output-frame --from="$OFFSET_STRING" --binary=t,6d --fields=t,,,,x,y,z --discard \
-    | $FEATURE_FILTER \
-    | csv-paste "-;binary=t,12d" "value=0;binary=ui" \
+    | thin \
+    | filter \
     > calibration.bin
 
 
 errcho 'loading in label-points. Select calibration features, label them 1,2,3... use 0 for non features...'
-COMMAND="label-points \"calibration.bin;fields=t,,,,x,y,z,,,,,,,id;binary=t,12d,ui\" $FEATURES"
-errcho $COMMAND
-label-points "calibration.bin;binary=t,12d,ui;fields=t,,,,x,y,z,,,,,,,id" $FEATURES
+if [[ $FEATURES ]] ; then
+    label-points "calibration.bin;binary=t,12d,ui;fields=t,,,,x,y,z,,,,,,,id" "$FEATURES;binary=t,12d,ui;fields=,,,,x,y,z,,,,,,,id"
+else
+    label-points "calibration.bin;binary=t,12d,ui;fields=t,,,,x,y,z,,,,,,,id"
+fi
+
+
 
 errcho "forming final file, with only feature data..."
 cat calibration.bin | csv-select --binary=t,12d,ui --fields=",,,,,,,,,,,,,id" "id;from=1" > $NAME.features.bin
 
-errcho "creating ascii version for..."
-pv $NAME.features.bin | csv-from-bin t,12d,ui --precision=10 > $NAME.features.csv
+#errcho "creating ascii version for..."
+#pv $NAME.features.bin | csv-from-bin t,12d,ui --precision=10 > $NAME.features.csv
 
 errcho "view final data to confirm it is appropriate for calibration"
 cat $NAME.features.bin | view-points --binary=t,12d,ui --fields=t,,,,x,y,z,,,,,,,id
@@ -121,6 +126,3 @@ cat $NAME.features.bin | view-points --binary=t,12d,ui --fields=t,,,,x,y,z,,,,,,
 echo -e "fields=t,xs,ys,zs,xn,yn,zn,north,east,down,roll,pitch,yaw,feature\nbinary=t,12d,ui\noffset/initial=$OFFSET" | name-value-convert --to json > $NAME.features.json
 
 errcho "calibration preparation is complete, now \"load $NAME.features.csv\" OR \"bin_load('$NAME.features.bin','t,d,d,d,d,d,d,d,d,d,d,d,d,ui')\"in matlab for calibration calibrate"
-
-#to edit afterwards:
-#comment out the main pipeline above pv $LOG_DIR/$NAME.bin \... and re-run
