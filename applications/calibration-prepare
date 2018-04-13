@@ -1,7 +1,5 @@
 #!/bin/bash
-#todo: migrate from points-filter to points-join or points-calc
 #todo: migrate to latest standards for argument parsing
-#todo: add an edit operation, to fine tune labelling
 #todo: add a before and after view operation
 name=$( basename $0 )
 
@@ -24,14 +22,12 @@ function usage()
     echo "<sensor options>"
     echo "    --name=<sensor name> : e.g. sick-front (default is sensor) (note: maps to sick-front.bin or sensor.bin"
     echo "    --offset=<sensor offset> : e.g. 0,0,-0.8845,0,0,$(math-deg2rad 180)"
-    echo "    --thin=<resolution> : e.g. 0.2 will keep only one point per 0.2m voxel default is no thinning"
-    echo "    --features=<file> : file with a point cloud containing pre labelled features,"
-    echo "                        e.g. labelled from a different sensor's data"
-    echo "                        --features sick.v.features.bin"
-    echo "                        expecting binary format same as output by this script"
+    echo "    --thin=<resolution> : e.g. 0.001 will keep only this fraction of points at random, default is no thinning"
+    echo "    --rough=<resolution> : e.g. if specified, voxelise at this resolution and label roughly first, followed by fine labelling"
     echo "    --format : will return the format of the binary output of this script "
     echo "examples"
-    echo "    $name /data --offset=0,0,0,0,0,0"
+    echo "    $name ./ --name=puck --offset=0,0,0,0,0,0 --rough=0.2 --thin=0.001"
+    echo "    $name ./ --name=puck --offset=0,0,0,0,0,0 --thin=0.0001"
     echo "    $name --format"
     echo 
     exit 1
@@ -40,7 +36,8 @@ LOG_DIR=$1
 RUN_DIR=$(pwd)
 OUTPUT="calibration"
 OFFSET=
-THIN=
+THIN=1.0
+ROUGH=
 MAXSTDDEV=0.05 #filter for 'bad' nav data
 MAXGAP=0.04 #nav must be spaced closer in seconds than this to be used
 FEATURE_FILTER_SIZE=0.5 #spatial filter size when using filter
@@ -53,6 +50,7 @@ for cmd_args in "$@" ; do
     if [[ "$( echo $cmd_args | grep '\-\-offset=' )" != "" ]]; then OFFSET="${cmd_args#--offset=}"; fi
     if [[ "$( echo $cmd_args | grep '\-\-name=' )" != "" ]]; then NAME="${cmd_args#--name=}"; fi
     if [[ "$( echo $cmd_args | grep '\-\-thin=' )" != "" ]]; then THIN="${cmd_args#--thin=}"; fi
+    if [[ "$( echo $cmd_args | grep '\-\-rough=' )" != "" ]]; then ROUGH="${cmd_args#--rough=}"; fi
     if [[ "$( echo $cmd_args | grep '\-\-features=' )" != "" ]]; then FEATURES="${cmd_args#--features=}"; fi
 done
 
@@ -69,18 +67,15 @@ fi
 
 [[ -s $LOG_DIR/nav.bin ]] || error "could not find trajectory file: $LOG_DIR/nav.bin"
 [[ -s $LOG_DIR/$NAME.bin ]] || error "could not find sensor file: $LOG_DIR/$NAME.bin"
-if [[ $FEATURES ]] ; then
-    [[ -s $FEATURES ]] || error "could not find feature file: $FEATURES"
-fi
 
 errcho "view nav data - check the trajectory is smooth, indicating a good nav solution"
 cat $LOG_DIR/nav.bin | view-points --binary=t,6d --fields=t,x,y,z,,,
 
 function filter
 {
-    if [ -n "$FEATURES" ] ; then
-        points-join --all --verbose --binary=t,12d --fields=,,,,x,y,z --radius=$FEATURE_FILTER_SIZE "$FEATURES;binary=t,12d,ui;fields=,,,,x,y,z" \
-            | csv-shuffle --binary=t,12d,t,12d,ui --fields=t,xs,ys,zs,xn,yn,zn,north,east,down,roll,pitch,yaw,,,,,,,,,,,,,,id --output-fields=t,xs,ys,zs,xn,yn,zn,north,east,down,roll,pitch,yaw,id
+    if [ -n "$ROUGH" ] ; then
+        points-join --binary=t,12d --fields=,,,,x,y,z --radius=$FEATURE_FILTER_SIZE "$NAME.rough.bin;binary=t,12d,ui;fields=,,,,x,y,z" \
+            | csv-shuffle --binary=t,12d,t,12d,ui --fields=t,xs,ys,zs,xn,yn,zn,x,y,z,roll,pitch,yaw,,,,,,,,,,,,,,id --output-fields=t,xs,ys,zs,xn,yn,zn,x,y,z,roll,pitch,yaw,id
     else
         csv-paste "-;binary=t,12d" "value=0;binary=ui"
     fi
@@ -96,26 +91,43 @@ function thin
     fi
 }
 
-errcho 'georeferencing (filtering if specified) and appending 0 column for labelling...'
+if [ -n "$ROUGH" ] ; then
+    errcho 'georeferencing and voxelising for initial rough labelling...'
+    pv $LOG_DIR/$NAME.bin \
+        | csv-shuffle --binary=t,3d --fields=t,x,y,z --output-fields=t,x,y,z,x,y,z \
+        | points-frame --max-gap=$MAXGAP --output-frame --from="$OFFSET_STRING" --binary=t,6d --fields=t,,,,x,y,z --discard \
+        | points-calc thin --points-per-voxel=1 --resolution=$ROUGH --binary=t,12d --fields=,,,,x,y,z \
+        | csv-paste "-;binary=t,12d" "value=0;binary=ui" \
+        > $NAME.rough.bin
+
+    errcho 'loading voxelised data in label-points. Roughly select calibration features, label them 1,2,3... use 0 for non features...'
+    label-points "$NAME.rough.bin;binary=t,12d,ui;fields=t,,,,x,y,z,,,,,,,id"
+
+    errcho 'retaining selected points only...'
+    cat $NAME.rough.bin | csv-select --binary=t,12d,ui --fields=",,,,,,,,,,,,,id" "id;from=1" | sponge $NAME.rough.bin
+fi        
+        
+
+errcho 'georeferencing and thinning for fine labelling...'
 pv $LOG_DIR/$NAME.bin \
     | csv-shuffle --binary=t,3d --fields=t,x,y,z --output-fields=t,x,y,z,x,y,z \
     | points-frame --max-gap=$MAXGAP --output-frame --from="$OFFSET_STRING" --binary=t,6d --fields=t,,,,x,y,z --discard \
-    | thin \
+    | points-calc thin --rate=$THIN --resolution=0.5 --binary=t,12d --fields=,,,,x,y,z \
     | filter \
-    > calibration.bin
+    > temp-$NAME.features.bin
 
 
 errcho 'loading in label-points. Select calibration features, label them 1,2,3... use 0 for non features...'
-if [[ $FEATURES ]] ; then
-    label-points "calibration.bin;binary=t,12d,ui;fields=t,,,,x,y,z,,,,,,,id" "$FEATURES;binary=t,12d,ui;fields=,,,,x,y,z,,,,,,,id"
+if [[ $ROUGH ]] ; then
+    label-points "temp-$NAME.features.bin;binary=t,12d,ui;fields=t,,,,x,y,z,,,,,,,id" "$NAME.rough.bin;binary=t,12d,ui;fields=,,,,x,y,z,,,,,,,id"
 else
-    label-points "calibration.bin;binary=t,12d,ui;fields=t,,,,x,y,z,,,,,,,id"
+    label-points "temp-$NAME.features.bin;binary=t,12d,ui;fields=t,,,,x,y,z,,,,,,,id"
 fi
 
 
 
 errcho "forming final file, with only feature data..."
-cat calibration.bin | csv-select --binary=t,12d,ui --fields=",,,,,,,,,,,,,id" "id;from=1" > $NAME.features.bin
+pv temp-$NAME.features.bin | csv-select --binary=t,12d,ui --fields=",,,,,,,,,,,,,id" "id;from=1" > $NAME.features.bin
 
 #errcho "creating ascii version for..."
 #pv $NAME.features.bin | csv-from-bin t,12d,ui --precision=10 > $NAME.features.csv
